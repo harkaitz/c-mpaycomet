@@ -13,7 +13,8 @@ LIBS       =          \
     "-l:libjansson.a" \
     "-pthread"        \
     "-l:libz.a"       \
-    "-l:libzstd.a"
+    "-l:libzstd.a"    \
+    "-ldl"
 ## Sources and targets
 PROGRAMS   =mpaycomet
 LIBRARIES  =libmpaycomet.a
