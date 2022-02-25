@@ -376,7 +376,7 @@ mpay_payment_info(mpay       *_o,
     int          res;
     bool         ret = false;
     FILE        *fp  = NULL;
-    json_t      *j   = NULL, *j_payment, *j_state, *j_history;
+    json_t      *j   = NULL, *j_payment, *j_state, *j_history, *j_err;
     crest_result r;
     res = crest_start_url(_o->crest, "%s/v1/payments/%s/info", _o->url, _order);
     if (!res/*err*/) goto cleanup;
@@ -388,6 +388,14 @@ mpay_payment_info(mpay       *_o,
     if (!res/*err*/) goto cleanup;
     res = crest_get_json(&j, r.ctype, r.rcode, r.d, r.dsz);
     if (!res/*err*/) goto cleanup;
+    j_err = json_object_get(j, "errorCode");
+    if (j_err && json_is_integer(j_err) && json_integer_value(j_err) >= 300) {
+        if (_opt_state)   *_opt_state   = MPAY_PAYMENT_UNFINISHED;
+        if (_opt_history) *_opt_history = json_array();
+        if (_opt_info)    *_opt_info    = json_object();
+        ret = true;
+        goto cleanup;
+    }
     j_payment = json_object_get(j, "payment");
     res = j_payment && json_is_object(j_payment);
     if (!res/*err*/) goto cleanup_invalid_response;
