@@ -1,4 +1,5 @@
 #include "mpaycomet.h"
+#include <str/strarray.h>
 #include <sys/types.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -6,9 +7,6 @@
 #include <libgen.h>
 #include <string.h>
 #include <syslog.h>
-#include <str/strdupa.h>
-#include <str/str2num.h>
-#include <str/strarray.h>
 #include <stdio.h>
 #include <jansson.h>
 
@@ -18,74 +16,83 @@
     ""
 
 static const char help[] =
-    "Usage: %s ..."                                                          "\n"
-    ""                                                                       "\n"
-    "Environment variables:"                                                 "\n"
-    ""                                                                       "\n"
-    "    PAYCOMET_API_TOKEN"                                                 "\n"
-    "    PAYCOMET_TERMINAL"                                                  "\n"
-    ""                                                                       "\n"
-    "Create payment forms using PAYCOMET."                                   "\n"
-    ""                                                                       "\n"
-    "    methods-get                : Get allowed methods."                  "\n"
-    "    exchange MONETARY CURRENCY : Exchange currency."                    "\n"
-    "    form-auth OPTS...          : Create a payment form and get URL."    "\n"
-    "    heartbeat                  : Check the connection is right."        "\n"
-    "    payment-info ORDER-ID      : Get payment info of form."             "\n"
-    "    payment-status ORDER-ID    : Get status: correct,failed,unfinished" "\n"
-    ""                                                                       "\n"
-    "Form options:"                                                          "\n"
-    ""                                                                       "\n"
-    "    order=ORDER-ID             : An identifier to check it later."      "\n"
-    "    amount=MONETARY            : The amount to charge."                 "\n"
-    "    language=LANG              : Language to use."                      "\n"
-    "    description=DESC           : Description to write on."              "\n"
-    "    merchantDescription=DESC   : Merchant's description."               "\n"
-    "    url_success=URL_OK         : URL when success."                     "\n"
-    "    url_cancel=URL_KO          : URL when cancelling."                  "\n"
-    ""                                                                       "\n"
+    "Usage: %s ..."                                                              "\n"
+    ""                                                                           "\n"
+    "Environment variables:"                                                     "\n"
+    ""                                                                           "\n"
+    "    PAYCOMET_API_TOKEN : %s"                                                "\n"
+    "    PAYCOMET_TERMINAL  : %s"                                                "\n"
+    ""                                                                           "\n"
+    "Create payment forms using PAYCOMET."                                       "\n"
+    ""                                                                           "\n"
+    "    methods-get                : Get allowed methods."                      "\n"
+    "    exchange MONETARY CURRENCY : Exchange currency."                        "\n"
+    "    heartbeat                  : Check the connection is right."            "\n"
+    "    form-auth OPTS...          : Create a payment form and get URL."        "\n"
+    "    form-subs OPTS...          : Create a subscription form and get URL."   "\n"
+    "    payment-info ORDER-ID      : Get payment info of form."                 "\n"
+    "    payment-status ORDER-ID    : Get status: correct,failed,unfinished"     "\n"
+    ""                                                                           "\n"
+    "Form options:"                                                              "\n"
+    ""                                                                           "\n"
+    "    order=ORDER-ID             : An identifier to check it later."          "\n"
+    "    amount=MONETARY            : The amount to charge."                     "\n"
+    "    language=LANG              : Language to use."                          "\n"
+    "    description=DESC           : Description to write on."                  "\n"
+    "    merchantDescription=DESC   : Merchant's description."                   "\n"
+    "    url_success=URL_OK         : URL when success."                         "\n"
+    "    url_cancel=URL_KO          : URL when cancelling."                      "\n"
+    ""                                                                           "\n"
+    "    date_start=YYYY/MM/DD      : Subscription start date (default today)"   "\n"
+    "    date_end=YYYY/MM/DD        : Subscription end date (default 5 years)"   "\n"
+    "    periodicity=NUM            : Payment periodicity in days. (default 30)" "\n"
+    ""                                                                           "\n"
     COPYRIGHT_LINE
     ;
 
 int main (int _argc, char *_argv[]) {
-    int     e     = 0;
-    int     ret   = 1;
-    mpay   *mpay  = NULL;
-    json_t *j1    = NULL;
-    char   *pname = basename(strdupa(_argv[0]));
+    int            e;
+    int            ret             = 1;
+    mpay          *mpay            = NULL;
+    json_t        *json            = NULL;
+    char          *pname           = basename(_argv[0]);
+    const char    *s1,*s2;
+    
     /* Print help. */
     if (_argc == 1 ||
         !strcmp(_argv[1], "-h") ||
         !strcmp(_argv[1], "--help")) {
-        printf(help, pname);
+        printf(help, pname,
+               ((s1 = getenv("PAYCOMET_API_TOKEN")))?s1:"",
+               ((s2 = getenv("PAYCOMET_TERMINAL"))) ?s2:"");
         return 0;
     }
+
+    /* Get command line arguments. */
+    char  *cmd  = (_argc>1)?_argv[1]:NULL;
+    char **args = _argv+1;
+    char  *arg1 = (_argc>2)?_argv[2]:NULL;
+    char  *arg2 = (_argc>3)?_argv[3]:NULL;
+
     /* Initialize logging. */
     openlog(pname, LOG_PERROR, LOG_USER);
+
     /* Initiaze paycomet. */
     e = mpay_create(&mpay);
     if (!e/*err*/) goto cleanup;
     mpay_set_auth(mpay,
                   getenv("PAYCOMET_API_TOKEN"),
                   getenv("PAYCOMET_TERMINAL"));
+
     /* Get command and arguments. */
-    char  *cmd  = (_argc>1)?_argv[1]:NULL;
-    char **args = _argv+1;
-    char  *arg1 = (_argc>2)?_argv[2]:NULL;
-    char  *arg2 = (_argc>3)?_argv[3]:NULL;
-    int    cmdi = str2num(cmd, strcasecmp,
-                          "methods-get"   , 1, "exchange"      , 2,
-                          "form-auth"     , 3, "heartbeat"     , 4,
-                          "payment-info"  , 5, "payment-status", 6,
-                          NULL);
-    /* Operations. */
-    switch (cmdi) {
-    case 1: /* methods-get */
-        e = mpay_methods_get(mpay, &j1);
+    if (!strcmp(cmd, "methods-get")) {
+        
+        e = mpay_methods_get(mpay, &json);
         if (!e/*err*/) goto cleanup;
-        json_dumpf(j1, stdout, JSON_INDENT(4));
-        break;
-    case 2: /* exchange */ {
+        json_dumpf(json, stdout, JSON_INDENT(4));
+
+    } else if (!strcmp(cmd, "exchange")) {
+
         coin_t  c1,c2;
         if (!arg1 || !arg2/*err*/) goto cleanup_invalid_args;
         e = coin_parse(&c1, arg1, NULL);
@@ -93,8 +100,9 @@ int main (int _argc, char *_argv[]) {
         e = mpay_exchange(mpay, c1, &c2, arg2);
         if (!e/*err*/) goto cleanup;
         printf("%s\n", coin_str(c2, COIN_SS_STORE));
-        break; }
-    case 3: /* form-auth */ {
+
+    } else if (!strcmp(cmd, "form-auth")) {
+        
         char            *opts[100];
         struct mpay_form form = {0};
         char            *m1   = NULL;
@@ -105,18 +113,34 @@ int main (int _argc, char *_argv[]) {
         if (!e/*err*/) goto cleanup;
         printf("%s\n", m1);
         free(m1);
-        break; }
-    case 4: /* heartbeat */
+
+    } else if (!strcmp(cmd, "form-subs")) {
+
+        char            *opts[100];
+        struct mpay_form form = {0};
+        char            *m1   = NULL;
+        streq2map(args, 100, opts);
+        e = mpay_form_prepare(&form, MPAY_FORM_SUBSCRIPTION, opts);
+        if (!e/*err*/) goto cleanup;
+        e = mpay_form(mpay, &form, &m1);
+        if (!e/*err*/) goto cleanup;
+        printf("%s\n", m1);
+        free(m1);
+
+    } else if (!strcmp(cmd, "heartbeat")) {
+
         e = mpay_heartbeat(mpay, stdout);
         if (!e/*err*/) goto cleanup;
-        break;
-    case 5: /* payment-info */
+        
+    } else if (!strcmp(cmd, "payment-info")) {
+
         if (!arg1/*err*/) goto cleanup_invalid_args;
-        e = mpay_payment_info(mpay, arg1, NULL, &j1, NULL);
+        e = mpay_payment_info(mpay, arg1, NULL, &json, NULL);
         if (!e/*err*/) goto cleanup;
-        json_dumpf(j1, stdout, JSON_INDENT(4));
-        break;
-    case 6: /* payment-status */ {
+        json_dumpf(json, stdout, JSON_INDENT(4));
+        
+    } else if (!strcmp(cmd, "payment-status")) {
+
         enum mpay_payment_state state;
         if (!arg1/*err*/) goto cleanup_invalid_args;
         e = mpay_payment_info(mpay, arg1, &state, NULL, NULL);
@@ -126,12 +150,20 @@ int main (int _argc, char *_argv[]) {
         case MPAY_PAYMENT_CORRECT:    fputs("correct\n", stdout);    break;
         case MPAY_PAYMENT_UNFINISHED: fputs("unfinished\n", stdout); break;
         }
-        break; }
-    default:
+
+    } else if (!strcmp(cmd, "subs-status")) {
+        enum mpay_subscription_state state;
+        if (!arg1/*err*/) goto cleanup_invalid_args;
+        e = mpay_subscription_info(mpay, arg1, &state);
+        if (!e/*err*/) goto cleanup;
+        
+    } else {
+
         syslog(LOG_ERR, "Invalid subcommand: %s", cmd);
         goto cleanup;
+        
     }
-    
+
     /* Return value. */
     ret = 0;
     goto cleanup;
@@ -142,7 +174,7 @@ int main (int _argc, char *_argv[]) {
     goto cleanup;
  cleanup:
     if (mpay) mpay_destroy(mpay);
-    if (j1)   json_decref(j1);
+    if (json) json_decref(json);
     return ret;
 }
 /**l*

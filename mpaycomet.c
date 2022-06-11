@@ -1,52 +1,52 @@
 #include "mpaycomet.h"
+#include <str/mtext.h>
 #include <string.h>
+#include <str/sizes.h>
 #include <str/str2num.h>
 #include <str/str2ptr.h>
 #include <str/strdupa.h>
-#include <str/mtext.h>
 #include <types/long_ss.h>
+#include <types/time_ss.h>
 #include <curl/crest.h>
 #include <jansson/extra.h>
-
+#include <io/slog.h>
 
 struct mpay {
-    crest      *crest;
-    const char *url;
-    char        auth_api_token[256];
-    long        auth_terminal;
-    bool        auth_ok;
+    crest  *crest;
+    str256  auth_api_token;
+    long    auth_terminal;
+    bool    auth_ok;
 };
 
-#ifndef error
-#  define error(FMT,...) syslog(LOG_ERR, "%s: " FMT, __func__, ##__VA_ARGS__)
-#endif
-#define set_nn(P,V) ({ if (P) *(P) = (V); })
+const char *MPAY_URL = "https://rest.paycomet.com";
 
 /* ------------------------------------
  * ---- CONSTRUCTOR AND DESTRUCTOR ----
  * ------------------------------------ */
 
-bool mpay_create(mpay **_o) {
-    mpay *o = NULL; int e;
-    o = calloc(1, sizeof(struct mpay));
-    if (!o/*err*/) goto cleanup_errno;
-    e = crest_create(&o->crest);
+bool mpay_create(mpay **_mpay) {
+    mpay          *mpay;
+    int            e;
+    mpay = calloc(1, sizeof(struct mpay));
+    if (!mpay/*err*/) goto cleanup_errno;
+    e = crest_create(&mpay->crest);
     if (!e/*err*/) goto cleanup;
-    o->url = "https://rest.paycomet.com";
-    *_o = o;
+    *_mpay = mpay;
     return true;
  cleanup_errno:
     error("%s", strerror(errno));
     goto cleanup;
  cleanup:
-    mpay_destroy(o);
+    mpay_destroy(mpay);
     return false;
 }
 
-void mpay_destroy(mpay *_o) {
-    if (_o) {
-        if (_o->crest) crest_destroy(_o->crest);
-        free(_o);
+void mpay_destroy(mpay *_mpay) {
+    if (_mpay) {
+        if (_mpay->crest) {
+            crest_destroy(_mpay->crest);
+        }
+        free(_mpay);
     }
 }
 
@@ -54,39 +54,38 @@ void mpay_destroy(mpay *_o) {
  * ---- AUTHORIZATION -----------------
  * ------------------------------------ */
 
-void mpay_set_auth(mpay *_o, const char *_api_token, const char *_terminal) {
-    int e;
-    _o->auth_ok = false;
+void mpay_set_auth(mpay *_mpay, const char *_api_token, const char *_terminal) {
+    _mpay->auth_ok = false;
     if (_api_token) {
-        strncpy(_o->auth_api_token, _api_token, sizeof(_o->auth_api_token)-1);
+        strncpy(_mpay->auth_api_token, _api_token, sizeof(_mpay->auth_api_token)-1);
     }
     if (_terminal) {
-        e = long_parse(&_o->auth_terminal, _terminal, NULL);
-        if (!e/*err*/) { _o->auth_terminal = -1; }
+        int e = long_parse(&_mpay->auth_terminal, _terminal, NULL);
+        if (!e/*err*/) { _mpay->auth_terminal = -1; }
     }
 }
 
-bool mpay_chk_auth(mpay *_o, const char **_reason) {
-    int e;
-    if (_o->auth_ok == false) {
-        if (_o->auth_terminal == 0) {
-            set_nn(_reason, _("Missing terminal"));
+bool mpay_chk_auth(mpay *_mpay, const char **_reason) {
+    if (_mpay->auth_ok == false) {
+        if (_mpay->auth_terminal == 0) {
+            error_reason(_reason, MISSING_TERMINAL_NUMBER, "Missing terminal number");
             return false;
-        } else if (_o->auth_terminal < 0) {
-            set_nn(_reason, _("Invalid terminal"));
+        } else if (_mpay->auth_terminal < 0) {
+            error_reason(_reason, INVALID_TERMINAL, "Invalid terminal");
             return false;
-        } else if (_o->auth_api_token[0] == '\0') {
-            set_nn(_reason, _("Missing API token"));
+        } else if (_mpay->auth_api_token[0] == '\0') {
+            error_reason(_reason, MISSING_API_TOKEN, "Missing API token");
             return false;
         }
-        e = crest_set_auth_header
-            (_o->crest, "PAYCOMET-API-TOKEN: %s", _o->auth_api_token);
+        int e = crest_set_auth_header(_mpay->crest,
+                                      "PAYCOMET-API-TOKEN: %s",
+                                      _mpay->auth_api_token);
         if (!e) {
-            set_nn(_reason, _("Internal error"));
+            error_reason(_reason, INTERNAL_ERROR, "Internal error");
             return false;
         }
     }
-    _o->auth_ok = true;
+    _mpay->auth_ok = true;
     return true;
 }
 
@@ -94,97 +93,91 @@ bool mpay_chk_auth(mpay *_o, const char **_reason) {
  * ---- CHECK IT WORKS ----------------
  * ------------------------------------ */
 
-bool mpay_heartbeat(mpay *_o, FILE *_fp1) {
-    int          e   = 0;
-    bool         r   = false;
-    crest_result hr  = {0};
-    FILE        *fp  = NULL;
-    json_t      *j1  = NULL;
-    e = mpay_chk_auth(_o, NULL);
-    if (!e/*err*/) goto cleanup_unauthorized;
-    e = crest_start_url(_o->crest, "%s/v1/heartbeat", _o->url);
+bool mpay_heartbeat(mpay *_mpay, FILE *_fp1) {
+    bool           retval          = false;
+    crest_result   hr              = {0};
+    FILE          *fp              = NULL;
+    json_t        *j1              = NULL;
+    int            e;
+    e = mpay_chk_auth(_mpay, NULL);
+    if (!e/*err*/) return false;
+    e = crest_start_url(_mpay->crest, "%s/v1/heartbeat", MPAY_URL);
     if (!e/*err*/) goto cleanup;
-    e = crest_post_data(_o->crest, CREST_CONTENT_TYPE_JSON, &fp);
+    e = crest_post_data(_mpay->crest, CREST_CONTENT_TYPE_JSON, &fp);
     if (!e/*err*/) goto cleanup;
-    e = fprintf(fp, "{\"terminal\": %li}", _o->auth_terminal);
+    e = fprintf(fp, "{\"terminal\": %li}", _mpay->auth_terminal);
     if (e<0/*err*/) goto cleanup_errno;
-    e = crest_perform(_o->crest, &hr.ctype, &hr.rcode, &hr.d, &hr.dsz);
+    e = crest_perform(_mpay->crest, &hr.ctype, &hr.rcode, &hr.d, &hr.dsz);
     if (!e/*err*/) goto cleanup;
     e = crest_get_json(&j1, hr.ctype, hr.rcode, hr.d, hr.dsz);
     if (!e/*err*/) goto cleanup;
-    const char *ping_paycomet    = json_object_get_string (j1, "time");
-    const char *ping_processor   = json_object_get_string (j1, "processorTime");
-    bool        status_processor = json_object_get_boolean(j1, "processorStatus");
-    e = ping_paycomet && ping_processor && status_processor;
+    const char *ping_paycomet      = json_object_get_string (j1, "time");
+    const char *ping_processor     = json_object_get_string (j1, "processorTime");
+    e = ping_paycomet && ping_processor;
     if (!e/*err*/) goto cleanup_invalid_response;
-    fprintf(_fp1, "Paycomet ping    : %s\n", ping_paycomet);
-    fprintf(_fp1, "Processor ping   : %s\n", ping_processor);
-    fprintf(_fp1, "Processor status : %s\n", (status_processor)?"on":"off");
-    r = true;
-    goto cleanup;
+    if (_fp1) {
+        fprintf(_fp1, "Paycomet ping     : %s\n", ping_paycomet);
+        fprintf(_fp1, "Processor ping    : %s\n", ping_processor);
+    }
+    retval = true;
+ cleanup:
+    if (j1) json_decref(j1);
+    return retval;
  cleanup_errno:
     error("%s", strerror(errno));
     goto cleanup;
  cleanup_invalid_response:
     error("Received invalid response:\n%.*s", (int)hr.dsz, hr.d);
     goto cleanup;
- cleanup_unauthorized:
-    error("Not configured.");
-    goto cleanup;
- cleanup:
-    if (j1) json_decref(j1);
-    return r;
 }
 
 /* ------------------------------------
  * ---- AUXILIARY METHODS -------------
  * ------------------------------------ */
 
-bool mpay_methods_get(mpay *_o, json_t **_r) {
-    int          e  = 0;
-    crest_result hr = {0};
-    bool         r  = false;
-    FILE        *fp = NULL;
-    json_t      *j1 = NULL;
-    e = mpay_chk_auth(_o, NULL);
-    if (!e/*err*/) goto cleanup_unauthorized;
-    e = crest_start_url(_o->crest, "%s/v1/methods", _o->url);
+bool mpay_methods_get(mpay *_mpay, json_t **_r) {
+    crest_result   hr              = {0};
+    bool           retval          = false;
+    FILE          *fp              = NULL;
+    json_t        *j1              = NULL;
+    int            e;
+    e = mpay_chk_auth(_mpay, NULL);
+    if (!e/*err*/) return false;
+    e = crest_start_url(_mpay->crest, "%s/v1/methods", MPAY_URL);
     if (!e/*err*/) goto cleanup;
-    e = crest_post_data(_o->crest, CREST_CONTENT_TYPE_JSON, &fp);
+    e = crest_post_data(_mpay->crest, CREST_CONTENT_TYPE_JSON, &fp);
     if (!e/*err*/) goto cleanup;
-    e = fprintf(fp, "{\"terminal\": %li}", _o->auth_terminal);
+    e = fprintf(fp, "{\"terminal\": %li}", _mpay->auth_terminal);
     if (e<0/*err*/) goto cleanup_errno;
-    e = crest_perform(_o->crest, &hr.ctype, &hr.rcode, &hr.d, &hr.dsz);
+    e = crest_perform(_mpay->crest, &hr.ctype, &hr.rcode, &hr.d, &hr.dsz);
     if (!e/*err*/) goto cleanup;
     e = crest_get_json(&j1, hr.ctype, hr.rcode, hr.d, hr.dsz);
     if (!e/*err*/) goto cleanup;
     if (_r) {
         *_r = json_incref(j1);
     }
-    r = true;
-    goto cleanup;
+    retval = true;
+ cleanup:
+    if (j1) json_decref(j1);
+    return retval;
  cleanup_errno:
     error("%s", strerror(errno));
     goto cleanup;
- cleanup_unauthorized:
-    error("Not configured.");
-    goto cleanup;
- cleanup:
-    if (j1) json_decref(j1);
-    return r;
 }
 
-bool mpay_exchange(mpay *_o, coin_t _fr, coin_t *_to, const char *_currency) {
-    int          e  = 0;
-    bool         r  = false;
-    crest_result hr = {0};
-    FILE        *fp = NULL;
-    json_t      *j1 = NULL,*j2;
-    e = mpay_chk_auth(_o, NULL);
-    if (!e/*err*/) goto cleanup_unauthorized;
-    e = crest_start_url(_o->crest, "%s/v1/exchange", _o->url);
+bool mpay_exchange(mpay *_mpay, coin_t _fr, coin_t *_to, const char *_currency) {
+    
+    bool           r               = false;
+    crest_result   hr              = {0};
+    FILE          *fp              = NULL;
+    json_t        *resp_j          = NULL,*j2;
+    int            e;
+    
+    e = mpay_chk_auth(_mpay, NULL);
+    if (!e/*err*/) return false;
+    e = crest_start_url(_mpay->crest, "%s/v1/exchange", MPAY_URL);
     if (!e/*err*/) goto cleanup;
-    e = crest_post_data(_o->crest, CREST_CONTENT_TYPE_JSON, &fp);
+    e = crest_post_data(_mpay->crest, CREST_CONTENT_TYPE_JSON, &fp);
     if (!e/*err*/) goto cleanup;
     strncpy(_to->currency, _currency, sizeof(_to->currency)-1);
     for (char *c=_fr.currency; *c; c++)  *c=toupper(*c);
@@ -196,51 +189,51 @@ bool mpay_exchange(mpay *_o, coin_t _fr, coin_t *_to, const char *_currency) {
                 "    \"originalCurrency\": \"%s\"," "\n"
                 "    \"finalCurrency\"   : \"%s\""  "\n"
                 "}"                                 "\n",
-                _o->auth_terminal,
+                _mpay->auth_terminal,
                 _fr.cents,
                 _fr.currency,
                 _to->currency);
     if (e<0/*err*/) goto cleanup_errno;
-    e = crest_perform(_o->crest, &hr.ctype, &hr.rcode, &hr.d, &hr.dsz);
+    e = crest_perform(_mpay->crest, &hr.ctype, &hr.rcode, &hr.d, &hr.dsz);
     if (!e/*err*/) goto cleanup;
-    e = crest_get_json(&j1, hr.ctype, hr.rcode, hr.d, hr.dsz);
+    e = crest_get_json(&resp_j, hr.ctype, hr.rcode, hr.d, hr.dsz);
     if (!e/*err*/) goto cleanup;
-    j2 = json_object_get(j1, "amount");
+    j2 = json_object_get(resp_j, "amount");
     e = j2 && json_is_number(j2);
     if (!e/*err*/) goto cleanup_invalid_response;
     _to->cents = json_number_value(j2);
     r = true;
-    goto cleanup;
+ cleanup:
+    if (resp_j) json_decref(resp_j);
+    return r;
  cleanup_errno:
     error("%s", strerror(errno));
     goto cleanup;
  cleanup_invalid_response:
     error("Invalid response from paycomet: %.*s", (int)hr.dsz, hr.d);
     goto cleanup;
- cleanup_unauthorized:
-    error("Not configured.");
-    goto cleanup;
- cleanup:
-    if (j1) json_decref(j1);
-    return r;
 }
 
 /* ------------------------------------
  * ---- FORMS -------------------------
  * ------------------------------------ */
 
-bool mpay_form_prepare(struct mpay_form *_f, enum mpay_operationType type, char *_opts[]) {
-    int    e;
-    char **opt;
-    char **dst_s;
-    int   *dst_i;
-    long   l;
+bool
+mpay_form_prepare(struct mpay_form *_f, enum mpay_operationType type, char *_opts[]) {
+    
+    char         **opt;
+    char         **dst_s;
+    int           *dst_i;
+    time_t        *dst_t;
+    long           l;
+    int            e;
+
     _f->operationType = type;
     _f->payment.methods[0] = MPAY_METHOD_CARD;
     for (opt = _opts; _opts && *opt; opt+=2) {
         if (!strcasecmp(*opt, "amount")) {
             e = coin_parse(&_f->payment.amount, *(opt+1), NULL);
-            if (!e/*err*/) goto invalid_amount;
+            if (!e/*err*/) return false;
         } else if ((dst_s = str2ptr
                     (*opt, strcasecmp,
                      "language"           , &_f->language,
@@ -261,25 +254,26 @@ bool mpay_form_prepare(struct mpay_form *_f, enum mpay_operationType type, char 
                      "idUser"         , &_f->payment.idUser,
                      "secure"         , &_f->payment.secure,
                      "userInteraction", &_f->payment.userInteraction,
+                     "periodicity"    , &_f->subscription.periodicity,
                      NULL))) {
             e = long_parse(&l, *(opt+1), NULL);
-            if (!e/*err*/) goto invalid_number;
+            if (!e/*err*/) return false;
             *dst_i = l;
+        } else if ((dst_t = str2ptr
+                    (*opt, strcasecmp,
+                     "date_start", &_f->subscription.start_date,
+                     "date_end"  , &_f->subscription.end_date,
+                     NULL))) {
+            e = time_day_parse(dst_t, *(opt+1), NULL);
+            if (!e/*err*/) return false;
         }
         
     }
-    
-    
     return true;
- invalid_amount:
-    error("Invalid amount: %s", *(opt+1));
-    return false;
- invalid_number:
-    error("Invalid number: %s", *(opt+1));
-    return false;
 }
 
-json_t *mpay_form_to_json(mpay *_o, struct mpay_form *_f) {
+json_t *
+mpay_form_to_json(mpay *_mpay, struct mpay_form *_f) {
     json_t *body = NULL;
     if (_f->operationType==MPAY_FORM_INVALID) {
         syslog(LOG_ERR, "mpay_form: Missing operationType.");
@@ -302,14 +296,14 @@ json_t *mpay_form_to_json(mpay *_o, struct mpay_form *_f) {
     if (_f->language) {
         json_object_set_string(body, "language", _f->language);
     }
-    json_object_set_integer(body, "terminal", _o->auth_terminal);
+    json_object_set_integer(body, "terminal", _mpay->auth_terminal);
     if (_f->operationType == MPAY_FORM_TOKENIZATION) {
         if (_f->productDescription) {
             json_object_set_string(body, "productDescription", _f->productDescription);
         }
     } else {
         json_t *payment = json_object(); long_ss l_ss;
-        json_object_set_integer(payment, "terminal", _o->auth_terminal);
+        json_object_set_integer(payment, "terminal", _mpay->auth_terminal);
         if (_f->payment.methods[0]) {
             json_object_set(payment, "methods", ({
                         json_t *m  = json_array();
@@ -363,61 +357,122 @@ json_t *mpay_form_to_json(mpay *_o, struct mpay_form *_f) {
         }
         json_object_set(body, "payment", payment);
     }
+    if (_f->operationType == MPAY_FORM_SUBSCRIPTION) {
+        json_t        *subscription_j  = json_object();
+        struct tm      tm              = {0};
+        char           txt[20]         = {0};
+        time_t         date_start      = 0;
+        time_t         date_end        = 0;
+        int            periodicity     = 0;
+        
+        if (_f->subscription.start_date) {
+            date_start = _f->subscription.start_date;
+        } else {
+            date_start = time(NULL);
+        }
+
+        if (_f->subscription.end_date) {
+            date_end = _f->subscription.end_date;
+        } else {
+            date_end = time(NULL)+(3600*24*364*5);
+        }
+
+        if (_f->subscription.periodicity) {
+            periodicity = _f->subscription.periodicity;
+        } else {
+            periodicity = 30;
+        }
+    
+        localtime_r(&date_start, &tm);
+        snprintf(txt, sizeof(txt)-1, "%04i%02i%02i", tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday);
+        json_object_set_string(subscription_j, "startDate", txt);
+        
+        localtime_r(&date_end, &tm);
+        snprintf(txt, sizeof(txt)-1, "%04i%02i%02i", tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday);
+        json_object_set_string(subscription_j, "endDate", txt);
+
+        snprintf(txt, sizeof(txt)-1, "%i", periodicity);
+        json_object_set_string(subscription_j, "periodicity", txt);
+
+        json_object_set(body, "subscription", subscription_j);
+    }
+        
+
+        
+        
+    
     return body;
 }
 
-bool mpay_form(mpay *_o, struct mpay_form *_form, char **_url_m) {
-    json_t      *req = NULL;
-    bool         ret = false;
-    int          e   = 0;
-    FILE        *fp  = NULL;
-    crest_result rh  = {0};
-    json_t      *j1  = NULL;
-    char        *m1  = NULL;
-    const char  *url = NULL;
-    req = mpay_form_to_json(_o, _form);
+bool
+mpay_form(mpay *_mpay, struct mpay_form *_form, char **_url_m) {
+    
+    json_t        *req             = NULL;
+    bool           retval          = false;
+    FILE          *fp              = NULL;
+    crest_result   rh              = {0};
+    json_t        *response        = NULL;
+    const char    *url             = NULL;
+    int            e;
+
+    /* Check _mpay has the credentials. */
+    e = mpay_chk_auth(_mpay, NULL);
+    if (!e/*err*/) return false;
+
+    /* Convert C struct to Json. */
+    req = mpay_form_to_json(_mpay, _form);
     if (!req/*err*/) goto cleanup;
-    e = mpay_chk_auth(_o, NULL);
-    if (!e/*err*/) goto cleanup_unauthorized;
-    e = crest_start_url(_o->crest, "%s/v1/form", _o->url);
+
+    /* Set the requested url. */
+    e = crest_start_url(_mpay->crest, "%s/v1/form", MPAY_URL);
     if (!e/*err*/) goto cleanup;
-    e = crest_post_data(_o->crest, CREST_CONTENT_TYPE_JSON, &fp);
+
+    /* Set the request body. */
+    e = crest_post_data(_mpay->crest, CREST_CONTENT_TYPE_JSON, &fp);
     if (!e/*err*/) goto cleanup;
     e = json_dumpf(req, fp, JSON_INDENT(4));
-    if (e<0/*err*/) goto cleanup_errno;
-    e = crest_perform(_o->crest, &rh.ctype, &rh.rcode, &rh.d, &rh.dsz);
+    if (e<0/*err*/) goto c_errno;
+
+    /* Perform the request and get response. */
+    e = crest_perform(_mpay->crest, &rh.ctype, &rh.rcode, &rh.d, &rh.dsz);
     if (!e/*err*/) goto cleanup;
-    e = crest_get_json(&j1, rh.ctype, rh.rcode, rh.d, rh.dsz);
+    e = crest_get_json(&response, rh.ctype, rh.rcode, rh.d, rh.dsz);
     if (!e/*err*/) goto cleanup;
-    url = json_object_get_string(j1, "challengeUrl");
-    if (!url/*err*/) goto cleanup_invalid_response;
+
+    /* Print the JSON (When debugging) */
+    json_dumpf(response, stderr, JSON_INDENT(4));
+    
+    /* Get URL. */
+    url = json_object_get_string(response, "challengeUrl");
+    if (!url/*err*/) goto c_invalid_response;
     if (_url_m) {
-        *_url_m = (m1 = strdup(url));
-        if (!m1/*err*/) goto cleanup_errno;
-        m1 = NULL;
+        *_url_m = strdup(url);
+        if (!*_url_m/*err*/) goto c_errno;
     }
-    ret = true;
-    goto cleanup;
- cleanup_errno:
+
+    /* Returns. */
+    retval = true;
+ cleanup:
+    json_decref(response);
+    return retval;
+ c_errno:
     error("%s", strerror(errno));
     goto cleanup;
- cleanup_invalid_response:
-    error("Received invalid response:\n%.*s", (int)rh.dsz, rh.d);
+ c_invalid_response:
+    error("Invalid response:\n%.*s", (int)rh.dsz, rh.d);
     goto cleanup;
- cleanup_unauthorized:
-    error("Not configured.");
-    goto cleanup;
- cleanup:
-    if (j1) json_decref(j1);
-    if (m1) free(m1);
-    return ret;
 }
+
+
+/* ------------------------------------
+ * ---- USERS -------------------------
+ * ------------------------------------ */
 
 /* ------------------------------------
  * ---- Check payments ----------------
  * ------------------------------------ */
 
-bool mpay_payment_info(mpay       *_o,
+bool mpay_payment_info(mpay *_mpay,
                        const char *_order,
                        enum mpay_payment_state *_opt_state,
                        json_t    **_opt_info,
@@ -427,21 +482,34 @@ bool mpay_payment_info(mpay       *_o,
     bool         ret = false;
     FILE        *fp  = NULL;
     json_t      *j   = NULL, *j_payment, *j_state, *j_history, *j_err;
+    int          n;
     crest_result rh;
-    e = mpay_chk_auth(_o, NULL);
-    if (!e/*err*/) goto cleanup_unauthorized;
-    e = crest_start_url(_o->crest, "%s/v1/payments/%s/info", _o->url, _order);
+
+    /* Check _mpay has the credentials. */
+    e = mpay_chk_auth(_mpay, NULL);
+    if (!e/*err*/) return false;
+
+    /* Set the requested url. */
+    e = crest_start_url(_mpay->crest, "%s/v1/payments/%s/info", MPAY_URL, _order);
     if (!e/*err*/) goto cleanup;
-    e = crest_post_data(_o->crest, CREST_CONTENT_TYPE_JSON, &fp);
+
+    /* Set the request body. */
+    e = crest_post_data(_mpay->crest, CREST_CONTENT_TYPE_JSON, &fp);
     if (!e/*err*/) goto cleanup;
-    e = fprintf(fp, "{\"terminal\": %li}", _o->auth_terminal);
+    e = fprintf(fp, "{\"terminal\": %li}", _mpay->auth_terminal);
     if (e<0/*err*/) goto cleanup_errno;
-    e = crest_perform(_o->crest, &rh.ctype, &rh.rcode, &rh.d, &rh.dsz);
+
+    /* Perform the request and get response. */
+    e = crest_perform(_mpay->crest, &rh.ctype, &rh.rcode, &rh.d, &rh.dsz);
     if (!e/*err*/) goto cleanup;
     e = crest_get_json(&j, rh.ctype, rh.rcode, rh.d, rh.dsz);
     if (!e/*err*/) goto cleanup;
+
+    /* Handle normal error cases. */
     j_err = json_object_get(j, "errorCode");
-    if (j_err && json_is_integer(j_err) && json_integer_value(j_err) >= 300) {
+    if (j_err &&
+        json_is_integer(j_err) &&
+        ((n=json_integer_value(j_err)) >= 300 || n==130)) {
         if (_opt_state)   *_opt_state   = MPAY_PAYMENT_UNFINISHED;
         if (_opt_history) *_opt_history = json_array();
         if (_opt_info)    *_opt_info    = json_object();
@@ -470,20 +538,97 @@ bool mpay_payment_info(mpay       *_o,
         *_opt_info = json_incref(j_payment);
     }    
     ret = true;
-    goto cleanup;
+ cleanup:
+    if (j) json_decref(j);
+    return ret;
  cleanup_errno:
     error("%s", strerror(errno));
     goto cleanup;
  cleanup_invalid_response:
-    error("Received invalid response:\n%.*s", (int)rh.dsz, rh.d);
+    error("Invalid response: %.*s", (int)rh.dsz, rh.d);
     goto cleanup;
- cleanup_unauthorized:
-    error("Not configured.");
-    goto cleanup;
- cleanup:
-    if (j) json_decref(j);
-    return ret;
 }
+
+
+
+bool mpay_subscription_info(mpay *_mpay,
+                            const char                   *_order,
+                            enum mpay_subscription_state *_opt_state) {
+
+    bool           retval          = false;
+    json_t        *response        = NULL;
+    crest_result   rh;
+    FILE          *fp;
+    int            e;
+
+    /* Check _mpay has the credentials. */
+    e = mpay_chk_auth(_mpay, NULL);
+    if (!e/*err*/) return false;
+
+    /* Set the requested url. */
+    //e = crest_start_url(_mpay->crest, "%s/v1/payments/%s/info", MPAY_URL, _order);
+    //e = crest_start_url(_mpay->crest, "%s/v1/subscription/%s/info", MPAY_URL, _order);
+    e = crest_start_url(_mpay->crest, "%s/v1/payments/search", MPAY_URL);
+    //e = crest_start_url(_mpay->crest, "%s/v1/cards", MPAY_URL);
+    if (!e/*err*/) goto cleanup;
+
+    /* Set the request body. */
+    e = crest_post_data(_mpay->crest, CREST_CONTENT_TYPE_JSON, &fp);
+    if (!e/*err*/) goto cleanup;
+    #if 0
+    e = fprintf(fp,
+                "{"                             "\n"
+                //"    \"payment\": {"            "\n"
+                "        \"terminal\": %li"     ",\n"
+                "        \"pan\": \"123\""            ",\n"
+                "        \"expiryMonth\": \"01\"" ",\n"
+                "        \"expiryYear\": \"30\"" "\n"
+                //"    }"                         "\n"
+                "}"                             "\n"
+                , _mpay->auth_terminal);
+    #endif
+    #if 1
+    e = fprintf(fp,
+                "{"                          "\n"
+                "        \"currency\": \"EUR\"," "\n"
+                "        \"sortOrder\": \"DESC\"," "\n"
+                "        \"sortType\": 0,"          "\n"
+                "        \"terminal\": %li,"     "\n"
+                "        \"operations\": [%i]," "\n"
+                "        \"minAmount\": 0," "\n"
+                "        \"maxAmount\": 0," "\n"
+                "        \"state\": 2," "\n"
+                "        \"fromDate\": \"20220507020000\","
+                "        \"toDate\" : \"20221007020000\""
+                //"        \"order\": \"%s\""  "\n"
+                "}"                          "\n",
+                _mpay->auth_terminal,
+                MPAY_FORM_SUBSCRIPTION
+                //,_order
+                );
+    #endif
+    if (e<0/*err*/) goto cleanup_errno;
+
+    /* Perform the request and get response. */
+    e = crest_perform(_mpay->crest, &rh.ctype, &rh.rcode, &rh.d, &rh.dsz);
+    if (!e/*err*/) goto cleanup;
+    e = crest_get_json(&response, rh.ctype, rh.rcode, rh.d, rh.dsz);
+    if (!e/*err*/) goto cleanup;
+
+    /* Print the JSON (When debugging) */
+    json_dumpf(response, stderr, JSON_INDENT(4));
+
+    /* Returns. */
+    retval = true;
+ cleanup:
+    json_decref(response);
+    return retval;
+ cleanup_errno:
+    error("%s", strerror(errno));
+    goto cleanup;
+}
+
+
 
 json_t *payment_info_to_refund(json_t *_i, coin_t _opt_different_amount) {
     json_t *o = NULL;
@@ -530,11 +675,11 @@ json_t *payment_info_to_refund(json_t *_i, coin_t _opt_different_amount) {
 }
 
 
-bool mpay_payment_refund (mpay         *_o,
-                          const char   *_order,
-                          json_t       *_info,
-                          coin_t        _opt_different_amount,
-                          json_t      **_opt_result)
+bool mpay_payment_refund (mpay       *_mpay,
+                          const char *_order,
+                          json_t     *_info,
+                          coin_t      _opt_different_amount,
+                          json_t    **_opt_result)
 {
     int          e;
     bool         ret = false;
@@ -544,15 +689,15 @@ bool mpay_payment_refund (mpay         *_o,
     json_t      *j   = NULL;
     req = payment_info_to_refund(_info, _opt_different_amount);
     if (!req/*err*/) goto cleanup;
-    e = mpay_chk_auth(_o, NULL);
+    e = mpay_chk_auth(_mpay, NULL);
     if (!e/*err*/) goto cleanup_unauthorized;
-    e = crest_start_url(_o->crest, "%s/v1/payments/%s/refund", _o->url, _order);
+    e = crest_start_url(_mpay->crest, "%s/v1/payments/%s/refund", MPAY_URL, _order);
     if (!e/*err*/) goto cleanup;
-    e = crest_post_data(_o->crest, CREST_CONTENT_TYPE_JSON, &fp);
+    e = crest_post_data(_mpay->crest, CREST_CONTENT_TYPE_JSON, &fp);
     if (!e/*err*/) goto cleanup;
     e = json_dumpf(req, fp, JSON_INDENT(4));
     if (e<0/*err*/) goto cleanup_errno;
-    e = crest_perform(_o->crest, &hr.ctype, &hr.rcode, &hr.d, &hr.dsz);
+    e = crest_perform(_mpay->crest, &hr.ctype, &hr.rcode, &hr.d, &hr.dsz);
     if (!e/*err*/) goto cleanup;
     e = crest_get_json(&j, hr.ctype, hr.rcode, hr.d, hr.dsz);
     if (!e/*err*/) goto cleanup;

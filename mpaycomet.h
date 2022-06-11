@@ -110,6 +110,7 @@ typedef struct json_t json_t;
 struct mpay_form;
 enum mpay_operationType;
 enum mpay_payment_state;
+enum mpay_subscription_state;
 
 /* Constructor and destructor. */
 bool mpay_create  (mpay **_o);
@@ -136,6 +137,9 @@ bool mpay_payment_info(mpay                    *_o,
                        enum mpay_payment_state *_opt_state,
                        json_t                 **_opt_info,
                        json_t                 **_opt_history);
+bool mpay_subscription_info(mpay *_mpay,
+                            const char                   *_order,
+                            enum mpay_subscription_state *_opt_state);
 bool mpay_payment_refund(mpay         *_o,
                          const char   *_order,
                          json_t       *_info,
@@ -159,6 +163,9 @@ enum mpay_payment_state {
     MPAY_PAYMENT_FAILED     = 0,
     MPAY_PAYMENT_CORRECT    = 1,
     MPAY_PAYMENT_UNFINISHED = 2,
+};
+enum mpay_subscription_state {
+    MPAY_SUBSCRIPTION_FAILED = 0,
 };
 
 struct escrow_target {
@@ -185,6 +192,11 @@ struct mpay_form {
         const char           *urlOk;
         const char           *urlKo;
     } payment;
+    struct {
+        time_t start_date;
+        time_t end_date;
+        int    periodicity;
+    } subscription;
 };
 
 #endif
