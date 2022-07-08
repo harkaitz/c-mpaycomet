@@ -9,7 +9,13 @@
 #include <types/time_ss.h>
 #include <curl/crest.h>
 #include <jansson/extra.h>
-#include <io/slog.h>
+#include <syslog.h>
+#ifdef NO_GETTEXT
+#  define _(T) T
+#else
+#  include <libintl.h>
+#  define _(T) dgettext("c-mpaycomet", T)
+#endif
 
 struct mpay {
     crest  *crest;
@@ -34,7 +40,7 @@ bool mpay_create(mpay **_mpay) {
     *_mpay = mpay;
     return true;
  cleanup_errno:
-    error("%s", strerror(errno));
+    syslog(LOG_ERR, "%s", strerror(errno));
     goto cleanup;
  cleanup:
     mpay_destroy(mpay);
@@ -68,20 +74,20 @@ void mpay_set_auth(mpay *_mpay, const char *_api_token, const char *_terminal) {
 bool mpay_chk_auth(mpay *_mpay, const char **_reason) {
     if (_mpay->auth_ok == false) {
         if (_mpay->auth_terminal == 0) {
-            error_reason(_reason, MISSING_TERMINAL_NUMBER, "Missing terminal number");
+            if(_reason) *_reason = _("Missing terminal number");
             return false;
         } else if (_mpay->auth_terminal < 0) {
-            error_reason(_reason, INVALID_TERMINAL, "Invalid terminal");
+            if(_reason) *_reason = _("Invalid terminal");
             return false;
         } else if (_mpay->auth_api_token[0] == '\0') {
-            error_reason(_reason, MISSING_API_TOKEN, "Missing API token");
+            if(_reason) *_reason = _("Missing API token");
             return false;
         }
         int e = crest_set_auth_header(_mpay->crest,
                                       "PAYCOMET-API-TOKEN: %s",
                                       _mpay->auth_api_token);
         if (!e) {
-            error_reason(_reason, INTERNAL_ERROR, "Internal error");
+            if(_reason) *_reason = _("Internal error");
             return false;
         }
     }
@@ -124,10 +130,10 @@ bool mpay_heartbeat(mpay *_mpay, FILE *_fp1) {
     if (j1) json_decref(j1);
     return retval;
  cleanup_errno:
-    error("%s", strerror(errno));
+    syslog(LOG_ERR, "%s", strerror(errno));
     goto cleanup;
  cleanup_invalid_response:
-    error("Received invalid response:\n%.*s", (int)hr.dsz, hr.d);
+    syslog(LOG_ERR, "Received invalid response:\n%.*s", (int)hr.dsz, hr.d);
     goto cleanup;
 }
 
@@ -161,7 +167,7 @@ bool mpay_methods_get(mpay *_mpay, json_t **_r) {
     if (j1) json_decref(j1);
     return retval;
  cleanup_errno:
-    error("%s", strerror(errno));
+    syslog(LOG_ERR, "%s", strerror(errno));
     goto cleanup;
 }
 
@@ -207,10 +213,10 @@ bool mpay_exchange(mpay *_mpay, coin_t _fr, coin_t *_to, const char *_currency) 
     if (resp_j) json_decref(resp_j);
     return r;
  cleanup_errno:
-    error("%s", strerror(errno));
+    syslog(LOG_ERR, "%s", strerror(errno));
     goto cleanup;
  cleanup_invalid_response:
-    error("Invalid response from paycomet: %.*s", (int)hr.dsz, hr.d);
+    syslog(LOG_ERR, "Invalid response from paycomet: %.*s", (int)hr.dsz, hr.d);
     goto cleanup;
 }
 
@@ -456,10 +462,10 @@ mpay_form(mpay *_mpay, struct mpay_form *_form, char **_url_m) {
     json_decref(response);
     return retval;
  c_errno:
-    error("%s", strerror(errno));
+    syslog(LOG_ERR, "%s", strerror(errno));
     goto cleanup;
  c_invalid_response:
-    error("Invalid response:\n%.*s", (int)rh.dsz, rh.d);
+    syslog(LOG_ERR, "Invalid response:\n%.*s", (int)rh.dsz, rh.d);
     goto cleanup;
 }
 
@@ -542,10 +548,10 @@ bool mpay_payment_info(mpay *_mpay,
     if (j) json_decref(j);
     return ret;
  cleanup_errno:
-    error("%s", strerror(errno));
+    syslog(LOG_ERR, "%s", strerror(errno));
     goto cleanup;
  cleanup_invalid_response:
-    error("Invalid response: %.*s", (int)rh.dsz, rh.d);
+    syslog(LOG_ERR, "Invalid response: %.*s", (int)rh.dsz, rh.d);
     goto cleanup;
 }
 
@@ -624,7 +630,7 @@ bool mpay_subscription_info(mpay *_mpay,
     json_decref(response);
     return retval;
  cleanup_errno:
-    error("%s", strerror(errno));
+    syslog(LOG_ERR, "%s", strerror(errno));
     goto cleanup;
 }
 
@@ -707,10 +713,10 @@ bool mpay_payment_refund (mpay       *_mpay,
     ret = true;
     goto cleanup;
  cleanup_errno:
-    error("%s", strerror(errno));
+    syslog(LOG_ERR, "%s", strerror(errno));
     goto cleanup;
  cleanup_unauthorized:
-    error("Not configured.");
+    syslog(LOG_ERR, "Not configured.");
     goto cleanup;
  cleanup:
     if (j) json_decref(j);
