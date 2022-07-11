@@ -1,103 +1,3 @@
-/* # API
- * https://docs.paycomet.com/es/integracion/rest-docs#api-Balance-productBalance
- * https://docs.paycomet.com/en/recursos/codigos-de-error
- */
-/* ## API METHODS - BALANCE
- *
- * - productBalance  : 1031: Insufficient Rights.
- */
-/* ## API METHODS - CARDS
- *
- * - addUser         : Certification required. Uninteresting.
- * - editUser        :
- * - infoUser        :
- * - physicalAddCard :
- * - removeUser      :
- */
-/* ## API METHODS - DCC -- Dynamic currency conversion (DCC)
- *
- * - dccPurchaseConfirm : Interesting, Requires user token.
- * - dccPurchaseCreate  :
- */
-/* ## API METHODS - ERROR
- *
- * - infoError: Not needed really.
- */
-/* ## API METHODS - CURRENCY CONVERSION
- *
- * - exchange: [mpay_exchange()]
- */
-/* ## API METHODS - FORM
- *
- * - form : [mpay_form_prepare(), mpay_form()]
- */
-/* ## API METHODS - HEARTBEAT
- *
- * - heartbeat: [mpay_heartbeat()]
- */
-/* ## API METHODS - IVR
- *
- * - checkSession  : Unimplemented, uninsteresting, Phone call centers.
- * - getSession    : "
- * - sessionCancel : "
- */
-/* ## API METHODS - IP
- *
- * - getCountrybyIP   : Unimplemented, interesting.
- * - getRemoteAddress : "
- */
-/* ## API METHODS - LAUNCHPAD
- *
- * - launchAuthorization    : Unimplemented, uninsteresting. Requires client's IP
- * - launchPreauthorization : and somehow contacts with it.
- * - launchSubscription     :
- */
-/* ## API METHODS - MARKETPLACE
- *
- * - splitTransfer         : Unimplemented, interesting. Transfers to other paycomet accounts
- * - splitTransferReversal : "
- * - transfer              :
- * - transferReversal      :
- */
-/* ## API METHODS - METHODS
- *
- * - getUserPaymentMethods: mpay_methods_get(): Get supported payment methods.
- */
-/* ## API METHODS - MIRAKL
- *
- * - miraklInvoicesSearch  : Unimplemented, (mirakl invoices need a "shop id").
- */
-/* ## API METHODS - PAYMENTS
- *
- * - executePurchase       : Unimplemented.
- * - executePurchaseRtoken : Unimplemented.
- * - operationInfo         : mpay_payment_info() : Get form info.
- * - operationSearch       : TODO.
- */
-/* ## API METHODS - PREAUTHORIZATIONS
- *
- * - cancelPreauthorization       : Not known, unimplemented, maybe interesting.
- * - confirmPreauthorization      : "
- * - createPreauthorization       : "
- * - createPreauthorizationRtoken : "
- */
-/* ## API METHODS - REFUND
- *
- * - executeRefund : mpay_payment_refund(). [Not tested]
- */
-/* ## API METHODS - SEPA
- *
- * - addDocument    : Not known, unimplemented, maybe interesting.
- * - checkCustomer  : "
- * - checkDocument  : "
- * - sepaOperations : "
- */
-/* ## API METHODS - SUBSCRIPTIONS
- *
- * - createSubscription : Unimplemented, interesting.
- * - editSubscription   :
- * - removeSubscription :
-*/
 #ifndef MPAYCOMET_H
 #define MPAYCOMET_H
 
@@ -132,14 +32,11 @@ bool mpay_methods_get  (mpay *_o, json_t **_opt_r);
 bool mpay_exchange     (mpay *_o, coin_t _fr, coin_t *_to, const char *_currency);
 
 /* Check payments. */
-bool mpay_payment_info(mpay                    *_o,
-                       const char              *_order,
-                       enum mpay_payment_state *_opt_state,
-                       json_t                 **_opt_info,
-                       json_t                 **_opt_history);
-bool mpay_subscription_info(mpay *_mpay,
-                            const char                   *_order,
-                            enum mpay_subscription_state *_opt_state);
+bool mpay_payment_info  (mpay                    *_o,
+                         const char              *_order,
+                         enum mpay_payment_state *_opt_state,
+                         json_t                 **_opt_info,
+                         json_t                 **_opt_history);
 bool mpay_payment_refund(mpay         *_o,
                          const char   *_order,
                          json_t       *_info,
@@ -153,6 +50,7 @@ enum mpay_method {
 enum mpay_operationType {
     MPAY_FORM_INVALID              = 0,
     MPAY_FORM_AUTHORIZATION        = 1,
+    MPAY_FORM_REFUND               = 2, /* This is undocumented. */
     MPAY_FORM_PREAUTHORIZATION     = 3,
     MPAY_FORM_SUBSCRIPTION         = 9,
     MPAY_FORM_TOKENIZATION         = 107,
@@ -163,9 +61,7 @@ enum mpay_payment_state {
     MPAY_PAYMENT_FAILED     = 0,
     MPAY_PAYMENT_CORRECT    = 1,
     MPAY_PAYMENT_UNFINISHED = 2,
-};
-enum mpay_subscription_state {
-    MPAY_SUBSCRIPTION_FAILED = 0,
+    MPAY_PAYMENT_REFUNDED   = -1 /* Not part of REST, it marks it got a refund. */
 };
 
 struct escrow_target {

@@ -16,38 +16,37 @@
     ""
 
 static const char help[] =
-    "Usage: %s ..."                                                              "\n"
-    ""                                                                           "\n"
-    "Environment variables:"                                                     "\n"
-    ""                                                                           "\n"
-    "    PAYCOMET_API_TOKEN : %s"                                                "\n"
-    "    PAYCOMET_TERMINAL  : %s"                                                "\n"
-    ""                                                                           "\n"
-    "Create payment forms using PAYCOMET."                                       "\n"
-    ""                                                                           "\n"
-    "    methods-get                : Get allowed methods."                      "\n"
-    "    exchange MONETARY CURRENCY : Exchange currency."                        "\n"
-    "    heartbeat                  : Check the connection is right."            "\n"
-    "    form-auth OPTS...          : Create a payment form and get URL."        "\n"
-    "    form-subs OPTS...          : Create a subscription form and get URL."   "\n"
-    "    payment-info   ORDER-ID    : Get payment info of form."                 "\n"
-    "    payment-status ORDER-ID    : Get status: correct,failed,unfinished"     "\n"
-    "    payment-refund ORDER-ID    : Refund payment."                           "\n"
-    ""                                                                           "\n"
-    "Form options:"                                                              "\n"
-    ""                                                                           "\n"
-    "    order=ORDER-ID             : An identifier to check it later."          "\n"
-    "    amount=MONETARY            : The amount to charge."                     "\n"
-    "    language=LANG              : Language to use."                          "\n"
-    "    description=DESC           : Description to write on."                  "\n"
-    "    merchantDescription=DESC   : Merchant's description."                   "\n"
-    "    url_success=URL_OK         : URL when success."                         "\n"
-    "    url_cancel=URL_KO          : URL when cancelling."                      "\n"
-    ""                                                                           "\n"
-    "    date_start=YYYY/MM/DD      : Subscription start date (default today)"   "\n"
-    "    date_end=YYYY/MM/DD        : Subscription end date (default 5 years)"   "\n"
-    "    periodicity=NUM            : Payment periodicity in days. (default 30)" "\n"
-    ""                                                                           "\n"
+    "Usage: %s ..."                                                                   "\n"
+    ""                                                                                "\n"
+    "Environment variables:"                                                          "\n"
+    ""                                                                                "\n"
+    "    PAYCOMET_API_TOKEN : %s"                                                     "\n"
+    "    PAYCOMET_TERMINAL  : %s"                                                     "\n"
+    ""                                                                                "\n"
+    "Create payment forms using PAYCOMET."                                            "\n"
+    ""                                                                                "\n"
+    "    methods-get                : Get allowed methods."                           "\n"
+    "    exchange MONETARY CURRENCY : Exchange currency."                             "\n"
+    "    heartbeat                  : Check the connection is right."                 "\n"
+    "    form-auth OPTS...          : Create a payment form and get URL."             "\n"
+    "    payment-info   ORDER-ID    : Get payment info of form."                      "\n"
+    "    payment-status ORDER-ID    : Get status: correct,failed,unfinished,refunded" "\n"
+    "    payment-refund ORDER-ID    : Refund payment."                                "\n"
+    ""                                                                                "\n"
+    "Form options:"                                                                   "\n"
+    ""                                                                                "\n"
+    "    order=ORDER-ID             : An identifier to check it later."               "\n"
+    "    amount=MONETARY            : The amount to charge."                          "\n"
+    "    language=LANG              : Language to use."                               "\n"
+    "    description=DESC           : Description to write on."                       "\n"
+    "    merchantDescription=DESC   : Merchant's description."                        "\n"
+    "    url_success=URL_OK         : URL when success."                              "\n"
+    "    url_cancel=URL_KO          : URL when cancelling."                           "\n"
+    ""                                                                                "\n"
+    "    date_start=YYYY/MM/DD      : Subscription start date (default today)"        "\n"
+    "    date_end=YYYY/MM/DD        : Subscription end date (default 5 years)"        "\n"
+    "    periodicity=NUM            : Payment periodicity in days. (default 30)"      "\n"
+    ""                                                                                "\n"
     COPYRIGHT_LINE
     ;
 
@@ -140,6 +139,13 @@ int main (int _argc, char *_argv[]) {
         e = mpay_payment_info(mpay, arg1, NULL, &json1, NULL);
         if (!e/*err*/) goto cleanup;
         json_dumpf(json1, stdout, JSON_INDENT(4));
+
+    } else if (!strcmp(cmd, "payment-history")) {
+
+        if (!arg1/*err*/) goto cleanup_invalid_args;
+        e = mpay_payment_info(mpay, arg1, NULL, NULL, &json1);
+        if (!e/*err*/) goto cleanup;
+        json_dumpf(json1, stdout, JSON_INDENT(4));
         
     } else if (!strcmp(cmd, "payment-status")) {
 
@@ -148,29 +154,21 @@ int main (int _argc, char *_argv[]) {
         e = mpay_payment_info(mpay, arg1, &state, NULL, NULL);
         if (!e/*err*/) goto cleanup;
         switch(state) {
-        case MPAY_PAYMENT_FAILED:     fputs("failed\n", stdout);     break;
-        case MPAY_PAYMENT_CORRECT:    fputs("correct\n", stdout);    break;
+        case MPAY_PAYMENT_FAILED:     fputs("failed\n"    , stdout); break;
+        case MPAY_PAYMENT_CORRECT:    fputs("correct\n"   , stdout); break;
         case MPAY_PAYMENT_UNFINISHED: fputs("unfinished\n", stdout); break;
+        case MPAY_PAYMENT_REFUNDED:   fputs("refunded\n"  , stdout); break;
         }
-
-    } else if (!strcmp(cmd, "subs-status")) {
-        enum mpay_subscription_state state;
-        if (!arg1/*err*/) goto cleanup_invalid_args;
-        e = mpay_subscription_info(mpay, arg1, &state);
-        if (!e/*err*/) goto cleanup;
 
     } else if (!strcmp(cmd, "payment-refund")) {
 
-        fprintf(stdout, "\n==== INFO ========================\n");
         if (!arg1/*err*/) goto cleanup_invalid_args;
         e = mpay_payment_info(mpay, arg1, NULL, &json1, NULL);
         if (!e/*err*/) goto cleanup;
-        json_dumpf(json1, stdout, JSON_INDENT(4));
-        fprintf(stdout, "\n==== REFUND ======================\n");
         e = mpay_payment_refund(mpay, arg1, json1, coin(0, NULL), &json2);
         if (!e/*err*/) goto cleanup;
         json_dumpf(json2, stdout, JSON_INDENT(4));
-        fprintf(stdout, "\n==================================\n");
+
     } else {
 
         syslog(LOG_ERR, "Invalid subcommand: %s", cmd);

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2022-07-11 20:52+0200\n"
+"POT-Creation-Date: 2022-07-11 21:58+0200\n"
 "PO-Revision-Date: 2022-07-08 04:35+0200\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
@@ -17,18 +17,18 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: mpaycomet.c:77
+#: mpaycomet.c:69
 msgid "Missing terminal number"
 msgstr "Falta el numero de terminal"
 
-#: mpaycomet.c:80
+#: mpaycomet.c:72
 msgid "Invalid terminal"
 msgstr "Falta el numero de terminal"
 
-#: mpaycomet.c:83
+#: mpaycomet.c:75
 msgid "Missing API token"
 msgstr "Falta el token para la API"
 
-#: mpaycomet.c:90
+#: mpaycomet.c:82
 msgid "Internal error"
 msgstr "Error interno."

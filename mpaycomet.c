@@ -26,10 +26,6 @@ struct mpay {
 
 const char *MPAY_URL = "https://rest.paycomet.com";
 
-/* ------------------------------------
- * ---- CONSTRUCTOR AND DESTRUCTOR ----
- * ------------------------------------ */
-
 bool mpay_create(mpay **_mpay) {
     mpay          *mpay;
     int            e;
@@ -55,10 +51,6 @@ void mpay_destroy(mpay *_mpay) {
         free(_mpay);
     }
 }
-
-/* ------------------------------------
- * ---- AUTHORIZATION -----------------
- * ------------------------------------ */
 
 void mpay_set_auth(mpay *_mpay, const char *_api_token, const char *_terminal) {
     _mpay->auth_ok = false;
@@ -94,10 +86,6 @@ bool mpay_chk_auth(mpay *_mpay, const char **_reason) {
     _mpay->auth_ok = true;
     return true;
 }
-
-/* ------------------------------------
- * ---- CHECK IT WORKS ----------------
- * ------------------------------------ */
 
 bool mpay_heartbeat(mpay *_mpay, FILE *_fp1) {
     bool           retval          = false;
@@ -136,10 +124,6 @@ bool mpay_heartbeat(mpay *_mpay, FILE *_fp1) {
     syslog(LOG_ERR, "Received invalid response:\n%.*s", (int)hr.dsz, hr.d);
     goto cleanup;
 }
-
-/* ------------------------------------
- * ---- AUXILIARY METHODS -------------
- * ------------------------------------ */
 
 bool mpay_methods_get(mpay *_mpay, json_t **_r) {
     crest_result   hr              = {0};
@@ -220,12 +204,7 @@ bool mpay_exchange(mpay *_mpay, coin_t _fr, coin_t *_to, const char *_currency) 
     goto cleanup;
 }
 
-/* ------------------------------------
- * ---- FORMS -------------------------
- * ------------------------------------ */
-
-bool
-mpay_form_prepare(struct mpay_form *_f, enum mpay_operationType type, char *_opts[]) {
+bool mpay_form_prepare(struct mpay_form *_f, enum mpay_operationType type, char *_opts[]) {
     
     char         **opt;
     char         **dst_s;
@@ -278,8 +257,7 @@ mpay_form_prepare(struct mpay_form *_f, enum mpay_operationType type, char *_opt
     return true;
 }
 
-json_t *
-mpay_form_to_json(mpay *_mpay, struct mpay_form *_f) {
+json_t *mpay_form_to_json(mpay *_mpay, struct mpay_form *_f) {
     json_t *body = NULL;
     if (_f->operationType==MPAY_FORM_INVALID) {
         syslog(LOG_ERR, "mpay_form: Missing operationType.");
@@ -410,8 +388,7 @@ mpay_form_to_json(mpay *_mpay, struct mpay_form *_f) {
     return body;
 }
 
-bool
-mpay_form(mpay *_mpay, struct mpay_form *_form, char **_url_m) {
+bool mpay_form(mpay *_mpay, struct mpay_form *_form, char **_url_m) {
     
     json_t        *req             = NULL;
     bool           retval          = false;
@@ -469,21 +446,11 @@ mpay_form(mpay *_mpay, struct mpay_form *_form, char **_url_m) {
     goto cleanup;
 }
 
-
-/* ------------------------------------
- * ---- USERS -------------------------
- * ------------------------------------ */
-
-/* ------------------------------------
- * ---- Check payments ----------------
- * ------------------------------------ */
-
 bool mpay_payment_info(mpay *_mpay,
                        const char *_order,
                        enum mpay_payment_state *_opt_state,
                        json_t    **_opt_info,
-                       json_t    **_opt_history)
-{
+                       json_t    **_opt_history) {
     int          e;
     bool         ret = false;
     FILE        *fp  = NULL;
@@ -532,9 +499,21 @@ bool mpay_payment_info(mpay *_mpay,
     e = j_history && json_is_array(j_history);
     if (!e/*err*/) goto cleanup_invalid_response;
     if (_opt_state) {
-        e = json_integer_value(j_state);
-        if (e != 0 && e != 1 && e != 2/*err*/) goto cleanup_invalid_response;
-        *_opt_state = e;
+        long s = json_integer_value(j_state);
+        if (s != 0 && s != 1 && s != 2/*err*/) goto cleanup_invalid_response;
+        if (e == 1) {
+            json_t *e; int i;
+            json_array_foreach(j_history, i, e) {
+                long c = json_object_get_integer(e, "operationType");
+                if (c == 2) {
+                    s = MPAY_PAYMENT_REFUNDED;
+                    break;
+                }
+            }
+            
+        }
+        
+        *_opt_state = s;
     }
     if (_opt_history) {
         *_opt_history = json_incref(j_history);
@@ -554,87 +533,6 @@ bool mpay_payment_info(mpay *_mpay,
     syslog(LOG_ERR, "Invalid response: %.*s", (int)rh.dsz, rh.d);
     goto cleanup;
 }
-
-
-
-bool mpay_subscription_info(mpay *_mpay,
-                            const char                   *_order,
-                            enum mpay_subscription_state *_opt_state) {
-
-    bool           retval          = false;
-    json_t        *response        = NULL;
-    crest_result   rh;
-    FILE          *fp;
-    int            e;
-
-    /* Check _mpay has the credentials. */
-    e = mpay_chk_auth(_mpay, NULL);
-    if (!e/*err*/) return false;
-
-    /* Set the requested url. */
-    //e = crest_start_url(_mpay->crest, "%s/v1/payments/%s/info", MPAY_URL, _order);
-    //e = crest_start_url(_mpay->crest, "%s/v1/subscription/%s/info", MPAY_URL, _order);
-    e = crest_start_url(_mpay->crest, "%s/v1/payments/search", MPAY_URL);
-    //e = crest_start_url(_mpay->crest, "%s/v1/cards", MPAY_URL);
-    if (!e/*err*/) goto cleanup;
-
-    /* Set the request body. */
-    e = crest_post_data(_mpay->crest, CREST_CONTENT_TYPE_JSON, &fp);
-    if (!e/*err*/) goto cleanup;
-    #if 0
-    e = fprintf(fp,
-                "{"                             "\n"
-                //"    \"payment\": {"            "\n"
-                "        \"terminal\": %li"     ",\n"
-                "        \"pan\": \"123\""            ",\n"
-                "        \"expiryMonth\": \"01\"" ",\n"
-                "        \"expiryYear\": \"30\"" "\n"
-                //"    }"                         "\n"
-                "}"                             "\n"
-                , _mpay->auth_terminal);
-    #endif
-    #if 1
-    e = fprintf(fp,
-                "{"                          "\n"
-                "        \"currency\": \"EUR\"," "\n"
-                "        \"sortOrder\": \"DESC\"," "\n"
-                "        \"sortType\": 0,"          "\n"
-                "        \"terminal\": %li,"     "\n"
-                "        \"operations\": [%i]," "\n"
-                "        \"minAmount\": 0," "\n"
-                "        \"maxAmount\": 0," "\n"
-                "        \"state\": 2," "\n"
-                "        \"fromDate\": \"20220507020000\","
-                "        \"toDate\" : \"20221007020000\""
-                //"        \"order\": \"%s\""  "\n"
-                "}"                          "\n",
-                _mpay->auth_terminal,
-                MPAY_FORM_SUBSCRIPTION
-                //,_order
-                );
-    #endif
-    if (e<0/*err*/) goto cleanup_errno;
-
-    /* Perform the request and get response. */
-    e = crest_perform(_mpay->crest, &rh.ctype, &rh.rcode, &rh.d, &rh.dsz);
-    if (!e/*err*/) goto cleanup;
-    e = crest_get_json(&response, rh.ctype, rh.rcode, rh.d, rh.dsz);
-    if (!e/*err*/) goto cleanup;
-
-    /* Print the JSON (When debugging) */
-    json_dumpf(response, stderr, JSON_INDENT(4));
-
-    /* Returns. */
-    retval = true;
- cleanup:
-    json_decref(response);
-    return retval;
- cleanup_errno:
-    syslog(LOG_ERR, "%s", strerror(errno));
-    goto cleanup;
-}
-
-
 
 json_t *payment_info_to_refund(json_t *_i, coin_t _opt_different_amount) {
     json_t *o = json_object();
@@ -663,7 +561,6 @@ json_t *payment_info_to_refund(json_t *_i, coin_t _opt_different_amount) {
     json_t *i_originalIp = json_incref(json_object_get(_i, "originalIp"));
     int res = o && i_terminal && i_amount && i_currency && i_authCode && i_originalIp;
     if (!res/*err*/) {
-        syslog(LOG_ERR, "%s: Received payment info.", __func__);
         json_decref(o);
         json_decref(i_terminal);
         json_decref(i_amount);
@@ -682,13 +579,11 @@ json_t *payment_info_to_refund(json_t *_i, coin_t _opt_different_amount) {
     return o;
 }
 
-
-bool mpay_payment_refund (mpay       *_mpay,
-                          const char *_order,
-                          json_t     *_info,
-                          coin_t      _opt_different_amount,
-                          json_t    **_opt_result)
-{
+bool mpay_payment_refund(mpay *_mpay,
+                         const char *_order,
+                         json_t     *_info,
+                         coin_t      _opt_different_amount,
+                         json_t    **_opt_result) {
     int          e;
     bool         ret = false;
     json_t      *req = NULL;

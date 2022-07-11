@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2022-07-11 20:52+0200\n"
+"POT-Creation-Date: 2022-07-11 21:58+0200\n"
 "PO-Revision-Date: 2022-07-08 04:35+0200\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
@@ -16,18 +16,18 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: mpaycomet.c:77
+#: mpaycomet.c:69
 msgid "Missing terminal number"
 msgstr "Terminal zenbakia falta"
 
-#: mpaycomet.c:80
+#: mpaycomet.c:72
 msgid "Invalid terminal"
 msgstr "Terminal zenbakia falta da"
 
-#: mpaycomet.c:83
+#: mpaycomet.c:75
 msgid "Missing API token"
 msgstr "API-rako tokena falta da"
 
-#: mpaycomet.c:90
+#: mpaycomet.c:82
 msgid "Internal error"
 msgstr "Barne errorea"
