@@ -30,8 +30,9 @@ static const char help[] =
     "    heartbeat                  : Check the connection is right."            "\n"
     "    form-auth OPTS...          : Create a payment form and get URL."        "\n"
     "    form-subs OPTS...          : Create a subscription form and get URL."   "\n"
-    "    payment-info ORDER-ID      : Get payment info of form."                 "\n"
+    "    payment-info   ORDER-ID    : Get payment info of form."                 "\n"
     "    payment-status ORDER-ID    : Get status: correct,failed,unfinished"     "\n"
+    "    payment-refund ORDER-ID    : Refund payment."                           "\n"
     ""                                                                           "\n"
     "Form options:"                                                              "\n"
     ""                                                                           "\n"
@@ -54,7 +55,8 @@ int main (int _argc, char *_argv[]) {
     int            e;
     int            ret             = 1;
     mpay          *mpay            = NULL;
-    json_t        *json            = NULL;
+    json_t        *json1           = NULL;
+    json_t        *json2           = NULL;
     char          *pname           = basename(_argv[0]);
     const char    *s1,*s2;
     
@@ -87,9 +89,9 @@ int main (int _argc, char *_argv[]) {
     /* Get command and arguments. */
     if (!strcmp(cmd, "methods-get")) {
         
-        e = mpay_methods_get(mpay, &json);
+        e = mpay_methods_get(mpay, &json1);
         if (!e/*err*/) goto cleanup;
-        json_dumpf(json, stdout, JSON_INDENT(4));
+        json_dumpf(json1, stdout, JSON_INDENT(4));
 
     } else if (!strcmp(cmd, "exchange")) {
 
@@ -135,9 +137,9 @@ int main (int _argc, char *_argv[]) {
     } else if (!strcmp(cmd, "payment-info")) {
 
         if (!arg1/*err*/) goto cleanup_invalid_args;
-        e = mpay_payment_info(mpay, arg1, NULL, &json, NULL);
+        e = mpay_payment_info(mpay, arg1, NULL, &json1, NULL);
         if (!e/*err*/) goto cleanup;
-        json_dumpf(json, stdout, JSON_INDENT(4));
+        json_dumpf(json1, stdout, JSON_INDENT(4));
         
     } else if (!strcmp(cmd, "payment-status")) {
 
@@ -156,7 +158,19 @@ int main (int _argc, char *_argv[]) {
         if (!arg1/*err*/) goto cleanup_invalid_args;
         e = mpay_subscription_info(mpay, arg1, &state);
         if (!e/*err*/) goto cleanup;
-        
+
+    } else if (!strcmp(cmd, "payment-refund")) {
+
+        fprintf(stdout, "\n==== INFO ========================\n");
+        if (!arg1/*err*/) goto cleanup_invalid_args;
+        e = mpay_payment_info(mpay, arg1, NULL, &json1, NULL);
+        if (!e/*err*/) goto cleanup;
+        json_dumpf(json1, stdout, JSON_INDENT(4));
+        fprintf(stdout, "\n==== REFUND ======================\n");
+        e = mpay_payment_refund(mpay, arg1, json1, coin(0, NULL), &json2);
+        if (!e/*err*/) goto cleanup;
+        json_dumpf(json2, stdout, JSON_INDENT(4));
+        fprintf(stdout, "\n==================================\n");
     } else {
 
         syslog(LOG_ERR, "Invalid subcommand: %s", cmd);
@@ -173,8 +187,9 @@ int main (int _argc, char *_argv[]) {
     syslog(LOG_ERR, "Invalid arguments.");
     goto cleanup;
  cleanup:
-    if (mpay) mpay_destroy(mpay);
-    if (json) json_decref(json);
+    if (mpay)  mpay_destroy(mpay);
+    if (json1) json_decref(json1);
+    
     return ret;
 }
 /**l*

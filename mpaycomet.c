@@ -637,7 +637,7 @@ bool mpay_subscription_info(mpay *_mpay,
 
 
 json_t *payment_info_to_refund(json_t *_i, coin_t _opt_different_amount) {
-    json_t *o = NULL;
+    json_t *o = json_object();
     json_t *i_terminal = json_incref(json_object_get(_i, "terminal"));
     json_t *i_amount   = ({
             json_t *j; long_ss ls;
@@ -672,11 +672,13 @@ json_t *payment_info_to_refund(json_t *_i, coin_t _opt_different_amount) {
         json_decref(i_originalIp);
         return NULL;
     }
-    json_object_set(o, "terminal"  , i_terminal);
-    json_object_set(o, "amount"    , i_amount);
-    json_object_set(o, "currency"  , i_currency);
-    json_object_set(o, "authCode"  , i_authCode);
-    json_object_set(o, "originalIp", i_originalIp);
+    json_t *p = json_object();
+    json_object_set(p, "terminal"  , i_terminal);
+    json_object_set(p, "amount"    , i_amount);
+    json_object_set(p, "currency"  , i_currency);
+    json_object_set(p, "authCode"  , i_authCode);
+    json_object_set(p, "originalIp", i_originalIp);
+    json_object_set(o, "payment", p);
     return o;
 }
 
