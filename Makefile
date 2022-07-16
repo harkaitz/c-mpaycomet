@@ -1,11 +1,13 @@
-## Configuration
 DESTDIR    =
 PREFIX     =/usr/local
 VARDIR     =/var/lib
 AR         =ar
 CC         =gcc
 CFLAGS     =-Wall -g
-CPPFLAGS   =
+PROGRAMS   =mpaycomet$(EXE)
+LIBRARIES  =libmpaycomet.a
+HEADERS    =mpaycomet.h
+CFLAGS_ALL =$(LDFLAGS) $(CFLAGS) $(CPPFLAGS)
 LIBS       =          \
     "-l:libcurl.a"    \
     "-l:libssl.a"     \
@@ -15,24 +17,9 @@ LIBS       =          \
     "-l:libz.a"       \
     "-l:libzstd.a"    \
     "-ldl"
-## Sources and targets
-PROGRAMS   =mpaycomet
-LIBRARIES  =libmpaycomet.a
-HEADERS    =mpaycomet.h
-MARKDOWNS  =README.md mpaycomet.3.md
-MANPAGES_3 =mpaycomet.3
-SOURCES_L  =mpaycomet.c
-SOURCES    =main.c $(SOURCES_L)
 
-## AUXILIARY
-CFLAGS_ALL =$(LDFLAGS) $(CFLAGS) $(CPPFLAGS)
-
-## STANDARD TARGETS
+## 
 all: $(PROGRAMS) $(LIBRARIES)
-help:
-	@echo "all     : Build everything."
-	@echo "clean   : Clean files."
-	@echo "install : Install all produced files."
 install: all
 	install -d                  $(DESTDIR)$(PREFIX)/bin
 	install -m755 $(PROGRAMS)   $(DESTDIR)$(PREFIX)/bin
@@ -40,21 +27,35 @@ install: all
 	install -m644 $(HEADERS)    $(DESTDIR)$(PREFIX)/include
 	install -d                  $(DESTDIR)$(PREFIX)/lib
 	install -m644 $(LIBRARIES)  $(DESTDIR)$(PREFIX)/lib
-	install -d                  $(DESTDIR)$(PREFIX)/share/man/man3	
-	install -m644 $(MANPAGES_3) $(DESTDIR)$(PREFIX)/share/man/man3
 clean:
 	rm -f $(PROGRAMS) $(LIBRARIES)
-ssnip:
-	ssnip LICENSE $(MARKDOWNS) $(HEADERS) $(SOURCES) $(MANPAGES_3)
 
-## LIBRARY
+##
 libmpaycomet.a: $(SOURCES_L) $(HEADERS)
 	mkdir -p .b
-	cd .b && $(CC) -c $(SOURCES_L:%=../%) $(CFLAGS_ALL)
+	$(CC) -c -o .b/mpaycomet.o mpaycomet.c $(CFLAGS_ALL)
 	$(AR) -crs $@ .b/*.o
 	rm -f .b/*.o
-mpaycomet: main.c libmpaycomet.a
+mpaycomet$(EXE): main.c libmpaycomet.a
 	$(CC) -o $@ main.c libmpaycomet.a $(CFLAGS_ALL) $(LIBS)
+
+## -- manpages --
+ifneq ($(PREFIX),)
+MAN_3=./mpaycomet.3 
+install: install-man3
+install-man3: $(MAN_3)
+	mkdir -p $(DESTDIR)$(PREFIX)/share/man/man3
+	cp $(MAN_3) $(DESTDIR)$(PREFIX)/share/man/man3
+endif
+## -- manpages --
+## -- license --
+ifneq ($(PREFIX),)
+install: install-license
+install-license: LICENSE
+	mkdir -p $(DESTDIR)$(PREFIX)/share/doc/c-mpaycomet
+	cp LICENSE $(DESTDIR)$(PREFIX)/share/doc/c-mpaycomet
+endif
+## -- license --
 ## -- gettext --
 ifneq ($(PREFIX),)
 install: install-po

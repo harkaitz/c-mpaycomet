@@ -1,5 +1,5 @@
+#define _GNU_SOURCE
 #include "mpaycomet.h"
-#include <str/mtext.h>
 #include <string.h>
 #include <str/sizes.h>
 #include <str/str2num.h>
@@ -289,7 +289,7 @@ json_t *mpay_form_to_json(mpay *_mpay, struct mpay_form *_f) {
         json_t *payment = json_object(); long_ss l_ss;
         json_object_set_integer(payment, "terminal", _mpay->auth_terminal);
         if (_f->payment.methods[0]) {
-            json_object_set(payment, "methods", ({
+            json_object_set(payment, "methods", __extension__ ({
                         json_t *m  = json_array();
                         for (int i=0; i<10 && _f->payment.methods[i]; i++) {
                             json_array_append(m, json_integer(_f->payment.methods[i]));
@@ -298,7 +298,7 @@ json_t *mpay_form_to_json(mpay *_mpay, struct mpay_form *_f) {
                     }));
         }
         if (_f->payment.excludedMethods[0]) {
-            json_object_set(payment, "excludedMethods", ({
+            json_object_set(payment, "excludedMethods", __extension__ ({
                         json_t *m = json_array();
                         for (int i=0; i<10 && _f->payment.excludedMethods[i]; i++) {
                             json_array_append(m, json_integer(_f->payment.excludedMethods[i]));
@@ -310,7 +310,7 @@ json_t *mpay_form_to_json(mpay *_mpay, struct mpay_form *_f) {
             json_object_set_string(payment, "order", _f->payment.order);
         }
         json_object_set_string(payment, "amount", ulong_str(_f->payment.amount.cents, &l_ss));
-        json_object_set_string(payment, "currency", ({
+        json_object_set_string(payment, "currency", __extension__ ({
                     for (char *c=_f->payment.amount.currency; *c; c++) {
                         *c = toupper(*c);
                     }
@@ -537,7 +537,7 @@ bool mpay_payment_info(mpay *_mpay,
 json_t *payment_info_to_refund(json_t *_i, coin_t _opt_different_amount) {
     json_t *o = json_object();
     json_t *i_terminal = json_incref(json_object_get(_i, "terminal"));
-    json_t *i_amount   = ({
+    json_t *i_amount   = __extension__ ({
             json_t *j; long_ss ls;
             if (_opt_different_amount.cents) {
                 j = json_string(long_str(_opt_different_amount.cents, &ls));
@@ -546,7 +546,7 @@ json_t *payment_info_to_refund(json_t *_i, coin_t _opt_different_amount) {
             }
             j;
         });
-    json_t *i_currency = ({
+    json_t *i_currency = __extension__ ({
             json_t *j; char *s,*p;
             if (_opt_different_amount.cents) {
                 s = strdupa(_opt_different_amount.currency);

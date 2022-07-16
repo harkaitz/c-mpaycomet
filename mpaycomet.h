@@ -3,14 +3,35 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <time.h>
 #include <types/coin.h>
 
 typedef struct mpay   mpay;
 typedef struct json_t json_t;
 struct mpay_form;
-enum mpay_operationType;
-enum mpay_payment_state;
-enum mpay_subscription_state;
+
+enum mpay_method {
+    MPAY_METHOD_INVALID = 0,
+    MPAY_METHOD_CARD    = 1
+};
+enum mpay_operationType {
+    MPAY_FORM_INVALID              = 0,
+    MPAY_FORM_AUTHORIZATION        = 1,
+    MPAY_FORM_REFUND               = 2, /* This is undocumented. */
+    MPAY_FORM_PREAUTHORIZATION     = 3,
+    MPAY_FORM_SUBSCRIPTION         = 9,
+    MPAY_FORM_TOKENIZATION         = 107,
+    MPAY_FORM_AUTHORIZATION_BY_REF = 114,
+    MPAY_FORM_AUTHORIZATION_DCC    = 116
+};
+enum mpay_payment_state {
+    MPAY_PAYMENT_FAILED     = 0,
+    MPAY_PAYMENT_CORRECT    = 1,
+    MPAY_PAYMENT_UNFINISHED = 2,
+    MPAY_PAYMENT_REFUNDED   = -1 /* Not part of REST, it marks it got a refund. */
+};
+
+
 
 /* Constructor and destructor. */
 bool mpay_create  (mpay **_o);
@@ -43,26 +64,7 @@ bool mpay_payment_refund(mpay         *_o,
                          coin_t        _opt_different_amount,
                          json_t      **_opt_result);
 
-enum mpay_method {
-    MPAY_METHOD_INVALID = 0,
-    MPAY_METHOD_CARD    = 1
-};
-enum mpay_operationType {
-    MPAY_FORM_INVALID              = 0,
-    MPAY_FORM_AUTHORIZATION        = 1,
-    MPAY_FORM_REFUND               = 2, /* This is undocumented. */
-    MPAY_FORM_PREAUTHORIZATION     = 3,
-    MPAY_FORM_SUBSCRIPTION         = 9,
-    MPAY_FORM_TOKENIZATION         = 107,
-    MPAY_FORM_AUTHORIZATION_BY_REF = 114,
-    MPAY_FORM_AUTHORIZATION_DCC    = 116
-};
-enum mpay_payment_state {
-    MPAY_PAYMENT_FAILED     = 0,
-    MPAY_PAYMENT_CORRECT    = 1,
-    MPAY_PAYMENT_UNFINISHED = 2,
-    MPAY_PAYMENT_REFUNDED   = -1 /* Not part of REST, it marks it got a refund. */
-};
+
 
 struct escrow_target {
     const char *id;
